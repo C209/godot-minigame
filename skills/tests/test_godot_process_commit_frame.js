@@ -44,6 +44,14 @@ vm.runInContext(`${processed}result=wasmImports.a();`, context);
 assert.strictEqual(context.result, 17);
 assert.deepStrictEqual(Array.from(context.calls), ["original", "flush", "commit"]);
 
+// Implicit swaps return INVALID_TARGET; WeChat still needs presentation.
+const implicitGlue = generatedGlue.replace("return 17", "return -3");
+const implicitContext = {};
+vm.createContext(implicitContext);
+vm.runInContext(`${processFixture(implicitGlue)}result=wasmImports.a();`, implicitContext);
+assert.strictEqual(implicitContext.result, -3);
+assert.deepStrictEqual(Array.from(implicitContext.calls), ["original", "flush", "commit"]);
+
 const withoutCommitImport = processFixture("var existing=function(){};var wasmImports={a:existing};");
 assert(!withoutCommitImport.includes("_emscripten_webgl_commit_frame"), "must not invent a missing frame import");
 

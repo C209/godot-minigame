@@ -9,7 +9,7 @@ The version-locked public bundle does not become GLX-capable merely because the 
 The current design produces one GLX-capable binary that chooses exactly one mode at startup:
 
 - WXGLX: `wxwebgl2`, native GLX command submission, no Emscripten frame commit.
-- Standard fallback: `webgl2`, explicit swap control, Emscripten frame commit plus WeChat `flush()` / `commit()`.
+- Standard fallback in a GLX-capable build: `webgl2`, implicit swap control, frame-commit wrapper calling WeChat `flush()` / `commit()`.
 
 This is a startup decision, not a live toggle.
 
@@ -53,14 +53,19 @@ Add `platform/web/js/patches/patch_em_gl.js` through `platform/web/SCsub`. The p
 
 Add a synchronous JS bridge in `platform/web/js/libs/library_godot_display.js` that returns whether `GameGlobal.__godotMinigameWXGLXEnabled === true`. Declare it in `platform/web/godot_js.h`.
 
-Store that value on `DisplayServerWeb`, then configure presentation from the runtime value:
+Store that value on `DisplayServerWeb`. Context attributes depend on build capability, while frame presentation depends on runtime mode:
 
 ```cpp
 wx_glx_enabled = godot_js_display_is_wx_glx_enabled() == 1;
-attributes.explicitSwapControl = !wx_glx_enabled;
+// GLX-capable build: OFFSCREEN_FRAMEBUFFER is disabled in both runtime modes.
+attributes.explicitSwapControl = false;
 ```
 
+Keep `explicitSwapControl = true` only for standard-only builds that enable `OFFSCREEN_FRAMEBUFFER`. Requesting explicit swaps in a GLX-capable build makes Emscripten reject context creation before calling `canvas.getContext()`. On the implicit standard path, Emscripten's commit function returns `INVALID_TARGET`; the wrapper must still execute the WeChat `flush()` / `commit()` calls.
+
 Call `emscripten_webgl_commit_frame()` only when `wx_glx_enabled` is false, including normal swaps and context destruction. A compile-time-only branch is incorrect because the same GLX-capable binary can start in standard WebGL mode.
+
+For an already adapted 4.7 checkout with the previous runtime-dependent swap setting, apply [the scoped correction](../patches/fixes/4.7-webgl-context/README.md). This is not a patchset for unmodified upstream Godot.
 
 Guard `GL.resizeOffscreenFramebuffer()` when `OFFSCREEN_FRAMEBUFFER` is absent. Keep the existing GLX compatibility handling for GLES timestamp queries and unsupported runtime GDExtension loading if those paths exist in the target branch.
 
@@ -146,6 +151,7 @@ Run source-level tests in the adapted Godot checkout:
 ```powershell
 node platform/web/js/tests/test_wechat_glx_runtime.js
 node platform/web/js/tests/test_godot_process_commit_frame.js
+node platform/web/js/tests/test_wechat_webgl_context_attributes.js
 ```
 
 Run runtime-shell and package tests from this skill:
