@@ -55,3 +55,7 @@ demo/minigame
 GITHUB_SECRETS.md
 dist
 latest.json
+
+.workbuddy/
+.trae/
+.claude/
